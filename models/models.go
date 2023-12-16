@@ -1,0 +1,23 @@
+package models
+
+type Cage struct {
+	Label        string `json:"label"`
+	Occupancy    int    `json:"occupancy"`
+	MaxOccupancy int    `json:"maxOccupancy"`
+	HasPower     bool   `json:"hasPower"`
+}
+
+type Dinosaur struct {
+	Name    string  `json:"name"`
+	Species string  `json:"species"`
+	Diet    string  `json:"diet"`
+	Cage    *string `json:"cage,omitempty"`
+}
+
+type AddDinosaurToCageRequest struct {
+	Name string `json:"name"`
+}
+
+type UpdateCagePowerStatusRequest struct {
+	HasPower bool `json:"hasPower"`
+}
