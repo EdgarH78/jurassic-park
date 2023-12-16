@@ -15,9 +15,9 @@ const baseUrl = "jurassicpark/v1"
 type parkManager interface {
 	AddCage(cage models.Cage) error
 	GetCage(cageLabel string) (*models.Cage, error)
-	GetCages() ([]models.Cage, error)
+	GetCages(filter models.CageFilter) ([]models.Cage, error)
 	AddDinosaur(dinosaur models.Dinosaur) error
-	GetDinosaurs() ([]models.Dinosaur, error)
+	GetDinosaurs(filter models.DinosaurFilter) ([]models.Dinosaur, error)
 	GetDinosaur(name string) (*models.Dinosaur, error)
 	AddDinosaurToCage(dinosaurName, targetCage string) error
 	GetDinosaursInCage(cageLabel string) ([]models.Dinosaur, error)
@@ -60,21 +60,32 @@ func (api *API) CreateCage(c *gin.Context) {
 	var cage models.Cage
 	err := json.NewDecoder(c.Request.Body).Decode(&cage)
 	if err != nil {
-		c.String(http.StatusUnprocessableEntity, "Request body is in the incorrect format")
+		c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse{
+			ErrorMessage: "Request body is in the incorrect format",
+		})
 		return
 	}
 	err = api.parkManager.AddCage(cage)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "An error occured while adding the cage")
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			ErrorMessage: "An error occured while adding the cage",
+		})
 	} else {
-		c.String(http.StatusCreated, "cage created")
+		c.JSON(http.StatusCreated, cage)
 	}
 }
 
 func (api *API) GetCages(c *gin.Context) {
-	cages, err := api.parkManager.GetCages()
+	filter := models.CageFilter{}
+	if c.Query("hasPower") != "" {
+		hasPower := c.Query("hasPower") == "true"
+		filter.HasPower = &hasPower
+	}
+	cages, err := api.parkManager.GetCages(filter)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "unexpected error")
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			ErrorMessage: "unexpected error",
+		})
 		return
 	}
 	c.JSON(http.StatusOK, cages)
@@ -85,9 +96,13 @@ func (api *API) GetCage(c *gin.Context) {
 	cage, err := api.parkManager.GetCage(cageLabel)
 	if err != nil {
 		if errors.Is(err, models.EntityNotFound) {
-			c.String(http.StatusNotFound, fmt.Sprintf("cage with label %s not found", cageLabel))
+			c.JSON(http.StatusNotFound, models.ErrorResponse{
+				ErrorMessage: fmt.Sprintf("cage with label %s not found", cageLabel),
+			})
 		} else {
-			c.String(http.StatusInternalServerError, "unexpected error")
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+				ErrorMessage: "unexpected error",
+			})
 		}
 		return
 	}
@@ -100,22 +115,32 @@ func (api *API) UpdateCagePowerStatus(c *gin.Context) {
 	var updatePowerStatusRequest models.UpdateCagePowerStatusRequest
 	err := json.NewDecoder(c.Request.Body).Decode(&updatePowerStatusRequest)
 	if err != nil {
-		c.String(http.StatusUnprocessableEntity, "Request body is in the incorrect format")
+		c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse{
+			ErrorMessage: "Request body is in the incorrect format",
+		})
 		return
 	}
 
 	err = api.parkManager.UpdateCagePowerStatus(cageLabel, updatePowerStatusRequest.HasPower)
 	if err != nil {
 		if errors.Is(err, models.IncompatibleCagePowerState) {
-			c.String(http.StatusConflict, "the cage has dinosaurs in it and cannot be powered off")
+			c.JSON(http.StatusConflict, models.ErrorResponse{
+				ErrorMessage: "the cage has dinosaurs in it and cannot be powered off",
+			})
 		} else if errors.Is(err, models.EntityNotFound) {
-			c.String(http.StatusNotFound, "could not find cage")
+			c.JSON(http.StatusNotFound, models.ErrorResponse{
+				ErrorMessage: "could not find cage",
+			})
 		} else {
-			c.String(http.StatusInternalServerError, "unexpected error")
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+				ErrorMessage: "unexpected error",
+			})
 		}
 		return
 	}
-	c.String(http.StatusOK, "power status updated")
+	c.JSON(http.StatusOK, gin.H{
+		"message": "power status updated",
+	})
 }
 
 func (api *API) GetDinosaursInCage(c *gin.Context) {
@@ -123,9 +148,13 @@ func (api *API) GetDinosaursInCage(c *gin.Context) {
 	dinosaurs, err := api.parkManager.GetDinosaursInCage(cageLabel)
 	if err != nil {
 		if errors.Is(err, models.EntityNotFound) {
-			c.String(http.StatusNotFound, fmt.Sprintf("the cage %s was not found", cageLabel))
+			c.JSON(http.StatusNotFound, models.ErrorResponse{
+				ErrorMessage: fmt.Sprintf("the cage %s was not found", cageLabel),
+			})
 		} else {
-			c.String(http.StatusInternalServerError, "unexpected error")
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+				ErrorMessage: "unexpected error",
+			})
 		}
 		return
 	}
@@ -136,52 +165,87 @@ func (api *API) AddDinosaurToCage(c *gin.Context) {
 	var addDinosaurRequest models.AddDinosaurToCageRequest
 	err := json.NewDecoder(c.Request.Body).Decode(&addDinosaurRequest)
 	if err != nil {
-		c.String(http.StatusUnprocessableEntity, "Request body is in the incorrect format")
+		c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse{
+			ErrorMessage: "Request body is in the incorrect format",
+		})
 		return
 	}
 	targetCage := c.Param("cageLabel")
 	err = api.parkManager.AddDinosaurToCage(addDinosaurRequest.Name, targetCage)
 	if err != nil {
 		if errors.Is(err, models.CageCapacityExceeded) {
-			c.String(http.StatusConflict, "the cage is at capacity")
+			c.JSON(http.StatusConflict, models.ErrorResponse{
+				ErrorMessage: "the cage is at capacity",
+			})
 		} else if errors.Is(err, models.IncompatibleCagePowerState) {
-			c.String(http.StatusConflict, "the cage is unavailable at this time, because it does not have power")
+			c.JSON(http.StatusConflict, models.ErrorResponse{
+				ErrorMessage: "the cage is unavailable at this time, because it does not have power",
+			})
 		} else if errors.Is(err, models.IncompatibleSpecies) {
-			c.String(http.StatusConflict, "the cage already contains species of dinosaur that are incompatible with this dinosaur's specie")
+			c.JSON(http.StatusConflict, models.ErrorResponse{
+				ErrorMessage: "the cage already contains species of dinosaur that are incompatible with this dinosaur's specie",
+			})
 		} else if errors.Is(err, models.EntityNotFound) {
-			c.String(http.StatusNotFound, "could not find either the cage or dinosaur")
+			c.JSON(http.StatusNotFound, models.ErrorResponse{
+				ErrorMessage: "could not find either the cage or dinosaur",
+			})
 		} else {
-			c.String(http.StatusInternalServerError, "unexpected error")
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+				ErrorMessage: "unexpected error",
+			})
 		}
 		return
 	}
-	c.String(http.StatusCreated, "dinosaur added")
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "dinosaur added",
+	})
 }
 
 func (api *API) AddDinosaur(c *gin.Context) {
 	var dinosaur models.Dinosaur
 	err := json.NewDecoder(c.Request.Body).Decode(&dinosaur)
 	if err != nil {
-		c.String(http.StatusUnprocessableEntity, "Request body is in the incorrect format")
+		c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse{
+			ErrorMessage: "Request body is in the incorrect format",
+		})
 		return
 	}
 
 	err = api.parkManager.AddDinosaur(dinosaur)
 	if err != nil {
 		if errors.Is(err, models.InvalidDinosaurSpecies) {
-			c.String(http.StatusConflict, fmt.Sprintf("The species %s is not a valid dinosaur species", dinosaur.Species))
+			c.JSON(http.StatusConflict, models.ErrorResponse{
+				ErrorMessage: fmt.Sprintf("The species %s is not a valid dinosaur species", dinosaur.Species)})
 		} else if errors.Is(err, models.EntityAlreadyExists) {
-			c.String(http.StatusConflict, fmt.Sprintf("There is already a dinosaur with the name %s", dinosaur.Name))
+			c.JSON(http.StatusConflict, models.ErrorResponse{
+				ErrorMessage: fmt.Sprintf("There is already a dinosaur with the name %s", dinosaur.Name),
+			})
 		}
 		return
 	}
-	c.String(http.StatusCreated, "dinosaur created")
+	c.JSON(http.StatusCreated, dinosaur)
 }
 
 func (api *API) GetDinosaurs(c *gin.Context) {
-	dinosaurs, err := api.parkManager.GetDinosaurs()
+	filter := models.DinosaurFilter{}
+	if c.Query("species") != "" {
+		species := c.Query("species")
+		filter.Species = &species
+	}
+	if c.Query("diet") != "" {
+		diet := c.Query("diet")
+		filter.Diet = &diet
+	}
+	if c.Query("needsCageAssignment") != "" {
+		needsCageAssignment := c.Query("needsCageAssignment") == "true"
+		filter.NeedsCageAssignment = &needsCageAssignment
+	}
+
+	dinosaurs, err := api.parkManager.GetDinosaurs(filter)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "unexpected error")
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			ErrorMessage: "unexpected error",
+		})
 		return
 	}
 	c.JSON(http.StatusOK, dinosaurs)
@@ -192,9 +256,13 @@ func (api *API) GetDinosaur(c *gin.Context) {
 	dinosaur, err := api.parkManager.GetDinosaur(dinosaurName)
 	if err != nil {
 		if errors.Is(err, models.EntityNotFound) {
-			c.String(http.StatusNotFound, fmt.Sprintf("dinosaur with name %s not found", dinosaurName))
+			c.JSON(http.StatusNotFound, models.ErrorResponse{
+				ErrorMessage: fmt.Sprintf("dinosaur with name %s not found", dinosaurName),
+			})
 		} else {
-			c.String(http.StatusInternalServerError, "unexpected error")
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+				ErrorMessage: "unexpected error",
+			})
 		}
 		return
 	}

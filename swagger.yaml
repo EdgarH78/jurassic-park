@@ -1,0 +1,269 @@
+swagger: '2.0'
+
+info:
+  description: |
+    API for the jurassic-park management system
+  version: v1
+  title: Jurassic Park Management API
+  contact:
+    name: Edgar Harris
+    email: edgarharris@gmail.com
+
+basePath: '/jurassicpark'
+
+schemes:
+  - http
+
+paths:
+  /v1/cages:
+    post:
+      description: |
+        Adds a new Cage to the jurassic-park management system
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          schema:
+            $ref: '#/definitions/Cage'
+      responses:
+        201:
+          description: Cage has been created and added to the jurassic-park management system
+        422:
+          description: The request body is in an invalid format
+        500:
+          description: Internal server error
+    get:
+      description: |
+        Gets the cages in the jurassic-park management system
+      produces:
+        - application/json
+      parameters:
+        - name: hasPower
+          description: Can be used to get back only cages with power on or power off
+          in: query
+          type: boolean
+          required: false
+      responses:
+        200:
+          description: Returns the cages
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/Cage'
+        500:
+          description: Internal server error
+  /v1/cages/{cageLabel}:
+    get:
+      description: |
+        Gets the cage associated with the label
+      produces:
+        - application/json
+      parameters:
+        - name: cageLabel
+          in: path
+          required: true
+          type: string
+      responses:
+        200:
+          description: Returns the cage with the cage label
+          schema:
+            $ref: '#/definitions/Cage'
+        404:
+          description: Cage with label not found
+        500:
+          description: Internal server error
+    patch:
+      description: |
+        Updates the cage's power status
+      produces:
+        - application/json
+      parameters:
+        - name: cageLabel
+          in: path
+          required: true
+          type: string
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/UpdateCagePowerStatusRequest'
+      responses:
+        200:
+          description: Power status for cage was updated
+        404:
+          description: Could not find cage with the cage label
+        409:
+          description: Unable to change the cage power status due to a conflict. This occurs if you try to power down a cage with dinosaurs in it
+        500:
+          description: Internal server error
+  /v1/cages/{cageLabel}/dinosaurs:
+    post:
+      description: |
+        Adds a dinosaur to the cage
+      produces:
+        - application/json
+      parameters:
+        - name: cageLabel
+          in: path
+          required: true
+          type: string
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/AddDinosaurToCageRequest'
+      responses:
+        201:
+          description: Dinosaur was added to the cage
+        404:
+          description: Either the Dinosaur or the cage could not be found
+        409:
+          description: |
+            Unable to add dinosaur to the cage. Possible reasons are as follows, there is a dinosaur that is 
+            incompatible with this dinosaur. The cage is powered off. The cage is full.
+        500:
+          description: Internal server error
+    get:
+      description: |
+        Gets the dinosaurs in the cage
+      produces:
+        - application/json
+      parameters:
+        - name: cageLabel
+          in: path
+          required: true
+          type: string
+      responses:
+        200:
+          description: Returns all of the dinosaurs in the cage
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/Dinosaur'
+        404:
+          description: Could not find cage with the cage label
+        500:
+          description: Internal server error
+  /v1/dinosaurs:
+    post:
+      description: |
+        Adds a dinosaur to the jurrasic-park management system
+      produces:
+        - application/json
+      parameters:
+        - name: body
+          in: body
+          schema:
+            $ref: '#/definitions/Dinosaur'
+      responses:
+        201:
+          description: Dinosaur added to the jurassic-park management system
+        409:
+          description: The dinosaur's species is not a recognized species
+        500:
+          description: Internal server error
+    get:
+      description: |
+        Gets the dinosaurs in the jurassic-park management system
+      produces: 
+        - application/json
+      parameters:
+        - name: species
+          description: filters results to this species
+          in: query
+          type: string
+          required: false
+        - name: diet
+          description: filters the results to only include dinosaurs with this diet
+          in: query
+          type: string
+          enum:
+            - Herbivore
+            - Carnivore
+          required: false
+        - name: needsCageAssignment
+          description: filters the results to dinosaurs that have cages if false or dinosaurs that need cages if true
+          in: query
+          type: boolean
+          required: false
+      responses:
+        200:
+          description: Returns the dinosaurs
+          schema:
+            type: array
+            items: 
+              $ref: '#/definitions/Dinosaur'
+        500:
+          description: Internal server error
+  /v1/dinosaurs/{name}:
+    get:
+      description: Gets the dinosaur with the specified name
+      produces:
+        - application/json
+      parameters:
+        - name: name
+          in: path
+          required: true
+          type: string
+      responses:
+        200:
+          description: Returns the dinosaur
+          schema:
+            $ref: '#/definitions/Dinosaur'
+        404:
+          description: Could not find dinosaur with name
+        500:
+          description: Internal server error
+    
+  
+
+definitions:
+  Cage:
+    type: object
+    properties:
+      label:
+        description: The user defined identifier for the Cage.
+        type: string
+      occupancy:
+        description: The number of dinosaurs housed in the Cage.
+        type: integer
+      maxOccupancy: 
+        description: The maximum number of dinosaurs the Cage can hold.
+        type: integer
+      hasPower:
+        description: true if the cage is powered on, false if it is powered off
+        type: boolean
+  UpdateCagePowerStatusRequest:
+    type: object
+    properties:
+      hasPower:
+        description: true to turn power on, false to turn power off
+        type: boolean
+  AddDinosaurToCageRequest:
+    type: object
+    properties:
+      name:
+        description: the name of the dinosaur you are adding to the cage
+        type: string
+  Dinosaur:
+    type: object
+    properties:
+      name:
+        description: the name of the dinosaur. This must be unique for each dinosaur
+        type: string
+      species:
+        description: the species for this dinosaur
+        type: string
+      diet:
+        description: What this dinosaur eats based on species. Can be Herbivore or Carnivore
+        type: string
+        enum:
+          - Herbivore
+          - Carnivore
+      cage:
+        description: The cage label for the cage this dinosaur is in
+        type: string
+
+
+

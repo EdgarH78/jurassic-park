@@ -241,6 +241,105 @@ func TestGetCages(t *testing.T) {
 	}
 }
 
+func TestGetCagesWithQueryParameter(t *testing.T) {
+	err := clearOutTestDatabase()
+	if err != nil {
+		t.Errorf("error when clearing out test database: %s", err)
+		return
+	}
+
+	dao, err := data.NewParkSqlDao(config)
+	if err != nil {
+		t.Errorf("error when creating test dao: %s", err)
+	}
+	err = dao.AddCage(models.Cage{
+		Label:        "test-cage-1",
+		MaxOccupancy: 10,
+		HasPower:     true,
+	})
+	if err != nil {
+		t.Errorf("error when creating test cage: %s", err)
+	}
+	err = dao.AddCage(models.Cage{
+		Label:        "test-cage-2",
+		MaxOccupancy: 7,
+		HasPower:     false,
+	})
+
+	if err != nil {
+		t.Errorf("error when creating test cage: %s", err)
+	}
+
+	cases := []struct {
+		description   string
+		hasPower      *bool
+		expectedCages []models.Cage
+	}{
+		{
+			description: "only cages with power on",
+			hasPower:    wrapBool(true),
+			expectedCages: []models.Cage{
+				{
+					Label:        "test-cage-1",
+					MaxOccupancy: 10,
+					HasPower:     true,
+					Occupancy:    0,
+				},
+			},
+		},
+		{
+			description: "only cages with power off",
+			hasPower:    wrapBool(false),
+			expectedCages: []models.Cage{
+				{
+					Label:        "test-cage-2",
+					MaxOccupancy: 7,
+					HasPower:     false,
+					Occupancy:    0,
+				},
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.description, func(t *testing.T) {
+			r := gin.Default()
+			_, err = createTestApi(r)
+			if err != nil {
+				t.Errorf("error when creating test api: %s", err)
+				return
+			}
+
+			w := httptest.NewRecorder()
+
+			url := "/jurassicpark/v1/cages"
+			if c.hasPower != nil {
+				url += fmt.Sprintf("?hasPower=%t", *c.hasPower)
+			}
+			req, _ := http.NewRequest("GET", url, nil)
+
+			r.ServeHTTP(w, req)
+
+			if c.expectedCages != nil && len(c.expectedCages) > 0 {
+				var actualCages []models.Cage
+				err = json.NewDecoder(w.Result().Body).Decode(&actualCages)
+				if err != nil {
+					t.Errorf("error while decoding result body: %s", err)
+					return
+				}
+				if len(actualCages) != len(c.expectedCages) {
+					t.Errorf("expected %d cages to be returned got %d", len(c.expectedCages), len(actualCages))
+				}
+
+				for i := 0; i < len(c.expectedCages); i++ {
+					expectedCage := c.expectedCages[i]
+					actualCage := actualCages[i]
+					assertCagesMatch(expectedCage, actualCage, t)
+				}
+			}
+		})
+	}
+}
+
 func assertCagesMatch(expectedCage, actualCage models.Cage, t *testing.T) {
 	if expectedCage.Label != actualCage.Label {
 		t.Errorf("expected cage label to be %s got %s", expectedCage.Label, actualCage.Label)
@@ -411,7 +510,7 @@ func TestGetDinosaurs(t *testing.T) {
 					return
 				}
 				if len(actualDinosaurs) != len(c.expectedDinosaurs) {
-					t.Errorf("expected %d cages to be returned got %d", len(c.expectedDinosaurs), len(actualDinosaurs))
+					t.Errorf("expected %d dinosaurs to be returned got %d", len(c.expectedDinosaurs), len(actualDinosaurs))
 				}
 
 				for i := 0; i < len(c.expectedDinosaurs); i++ {
@@ -764,7 +863,7 @@ func TestGetDinosaursForCage(t *testing.T) {
 					return
 				}
 				if len(actualDinosaurs) != len(c.expectedDinosaurs) {
-					t.Errorf("expected %d cages to be returned got %d", len(c.expectedDinosaurs), len(actualDinosaurs))
+					t.Errorf("expected %d dinosaurs to be returned got %d", len(c.expectedDinosaurs), len(actualDinosaurs))
 				}
 
 				for i := 0; i < len(c.expectedDinosaurs); i++ {
@@ -875,7 +974,205 @@ func TestSwitchPowerStatusOnCages(t *testing.T) {
 	}
 }
 
+func TestGetDinosaursWithQueryParameters(t *testing.T) {
+	// supported query parameters are: species, diet, needsCageAssignment
+
+	err := clearOutTestDatabase()
+	if err != nil {
+		t.Errorf("error when clearing out test database: %s", err)
+		return
+	}
+
+	dao, err := data.NewParkSqlDao(config)
+	if err != nil {
+		t.Errorf("error when creating test dao: %s", err)
+		return
+	}
+
+	dao.AddCage(models.Cage{
+		Label:        "T-Rex-Pen",
+		MaxOccupancy: 2,
+		HasPower:     true,
+	})
+	dao.AddCage(models.Cage{
+		Label:        "Herbivore-Pen",
+		MaxOccupancy: 12,
+		HasPower:     true,
+	})
+	dao.AddDinosaur(models.Dinosaur{
+		Name:    "TerryRex",
+		Species: "Tyrannosaurus",
+	})
+	dao.AddDinosaur(models.Dinosaur{
+		Name:    "MerryRex",
+		Species: "Tyrannosaurus",
+	})
+	dao.AddDinosaur(models.Dinosaur{
+		Name:    "JerryRex",
+		Species: "Tyrannosaurus",
+	})
+	dao.AddDinosaur(models.Dinosaur{
+		Name:    "Vela",
+		Species: "Velociraptor",
+	})
+	dao.AddDinosaur(models.Dinosaur{
+		Name:    "LittleFoot",
+		Species: "Brachiosaurus",
+	})
+	dao.AddDinosaur(models.Dinosaur{
+		Name:    "Cera",
+		Species: "Triceratops",
+	})
+
+	dao.AddDinosaurToCage("TerryRex", "T-Rex-Pen")
+	dao.AddDinosaurToCage("MerryRex", "T-Rex-Pen")
+	dao.AddDinosaurToCage("LittleFoot", "Herbivore-Pen")
+
+	cases := []struct {
+		description         string
+		species             *string
+		diet                *string
+		needsCageAssignment *bool
+		expectedDinosaurs   []models.Dinosaur
+	}{
+		{
+			description: "get all Tyrannosaurus",
+			species:     wrapString("Tyrannosaurus"),
+			expectedDinosaurs: []models.Dinosaur{
+				{
+					Name:    "TerryRex",
+					Species: "Tyrannosaurus",
+					Diet:    "Carnivore",
+					Cage:    wrapString("T-Rex-Pen"),
+				},
+				{
+					Name:    "MerryRex",
+					Species: "Tyrannosaurus",
+					Diet:    "Carnivore",
+					Cage:    wrapString("T-Rex-Pen"),
+				},
+				{
+					Name:    "JerryRex",
+					Species: "Tyrannosaurus",
+					Diet:    "Carnivore",
+				},
+			},
+		},
+		{
+			description: "get all Herbivores",
+			diet:        wrapString("Herbivore"),
+			expectedDinosaurs: []models.Dinosaur{
+				{
+					Name:    "LittleFoot",
+					Species: "Brachiosaurus",
+					Diet:    "Herbivore",
+					Cage:    wrapString("Herbivore-Pen"),
+				},
+				{
+					Name:    "Cera",
+					Species: "Triceratops",
+					Diet:    "Herbivore",
+				},
+			},
+		},
+		{
+			description:         "get all dinosaurs that need to be assigned to a cage",
+			needsCageAssignment: wrapBool(true),
+			expectedDinosaurs: []models.Dinosaur{
+				{
+					Name:    "JerryRex",
+					Species: "Tyrannosaurus",
+					Diet:    "Carnivore",
+				},
+				{
+					Name:    "Vela",
+					Species: "Velociraptor",
+					Diet:    "Carnivore",
+				},
+				{
+					Name:    "Cera",
+					Species: "Triceratops",
+					Diet:    "Herbivore",
+				},
+			},
+		},
+		{
+			description:         "get all dinosaurs that are assigned to a cage",
+			needsCageAssignment: wrapBool(false),
+			expectedDinosaurs: []models.Dinosaur{
+				{
+					Name:    "TerryRex",
+					Species: "Tyrannosaurus",
+					Diet:    "Carnivore",
+					Cage:    wrapString("T-Rex-Pen"),
+				},
+				{
+					Name:    "MerryRex",
+					Species: "Tyrannosaurus",
+					Diet:    "Carnivore",
+					Cage:    wrapString("T-Rex-Pen"),
+				},
+				{
+					Name:    "LittleFoot",
+					Species: "Brachiosaurus",
+					Diet:    "Herbivore",
+					Cage:    wrapString("Herbivore-Pen"),
+				},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.description, func(t *testing.T) {
+			r := gin.Default()
+			_, err = createTestApi(r)
+			if err != nil {
+				t.Errorf("error when creating test api: %s", err)
+				return
+			}
+
+			w := httptest.NewRecorder()
+			url := "/jurassicpark/v1/dinosaurs"
+			if c.diet != nil {
+				url = url + fmt.Sprintf("?diet=%s", *c.diet)
+			} else if c.species != nil {
+				url = url + fmt.Sprintf("?species=%s", *c.species)
+			} else if c.needsCageAssignment != nil {
+				url = url + fmt.Sprintf("?needsCageAssignment=%t", *c.needsCageAssignment)
+			}
+
+			req, _ := http.NewRequest("GET", url, nil)
+
+			r.ServeHTTP(w, req)
+
+			if c.expectedDinosaurs != nil && len(c.expectedDinosaurs) > 0 {
+				var actualDinosaurs []models.Dinosaur
+				err = json.NewDecoder(w.Result().Body).Decode(&actualDinosaurs)
+				if err != nil {
+					t.Errorf("error while decoding result body: %s", err)
+					return
+				}
+				if len(actualDinosaurs) != len(c.expectedDinosaurs) {
+					t.Errorf("expected %d dinosaurs to be returned got %d", len(c.expectedDinosaurs), len(actualDinosaurs))
+					return
+				}
+
+				for i := 0; i < len(c.expectedDinosaurs); i++ {
+					expectedDinosaur := c.expectedDinosaurs[i]
+					actualDinosaur := actualDinosaurs[i]
+					assertDinosaursMatch(expectedDinosaur, actualDinosaur, t)
+				}
+			}
+		})
+	}
+
+}
+
 func wrapString(value string) *string {
+	return &value
+}
+
+func wrapBool(value bool) *bool {
 	return &value
 }
 

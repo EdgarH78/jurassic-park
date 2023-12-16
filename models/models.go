@@ -21,3 +21,17 @@ type AddDinosaurToCageRequest struct {
 type UpdateCagePowerStatusRequest struct {
 	HasPower bool `json:"hasPower"`
 }
+
+type DinosaurFilter struct {
+	Species             *string
+	Diet                *string
+	NeedsCageAssignment *bool
+}
+
+type CageFilter struct {
+	HasPower *bool
+}
+
+type ErrorResponse struct {
+	ErrorMessage string `json:"errorMessage"`
+}

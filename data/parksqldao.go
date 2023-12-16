@@ -3,6 +3,7 @@ package data
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/EdgarH78/jurassic-park/models"
 	_ "github.com/go-sql-driver/mysql"
@@ -68,11 +69,11 @@ func (s *ParkSqlDao) getCageWithId(cageLabel string) (*models.Cage, int, error) 
 			WHERE externalId = ?
 			`
 	rows, err := s.db.Query(qs, cageLabel)
-	defer rows.Close()
-
 	if err != nil {
 		return nil, 0, err
 	}
+	defer rows.Close()
+
 	if !rows.Next() {
 		return nil, 0, models.EntityNotFound
 	}
@@ -91,16 +92,34 @@ func (s *ParkSqlDao) getCageWithId(cageLabel string) (*models.Cage, int, error) 
 	return &cage, id, nil
 }
 
-func (s *ParkSqlDao) GetCages() ([]models.Cage, error) {
+func (s *ParkSqlDao) GetCages(filter models.CageFilter) ([]models.Cage, error) {
 	qs := `SELECT id, externalId, capacity, hasPower 
-			FROM cage			
-			ORDER BY id`
-	rows, err := s.db.Query(qs)
-	defer rows.Close()
+			FROM cage`
 
+	whereParts := []string{}
+
+	// look for filter and apply
+	// Note: for this assignment I'm just supporting a filter on power, but I'm coding it as if I'm going to
+	// support more filtering.
+	if filter.HasPower != nil {
+		if *filter.HasPower {
+			whereParts = append(whereParts, " hasPower = 1 ")
+		} else {
+			whereParts = append(whereParts, " hasPower = 0 ")
+		}
+	}
+
+	if len(whereParts) > 0 {
+		where := strings.Join(whereParts, " AND ")
+		qs += " WHERE " + where
+	}
+
+	qs += " ORDER BY id "
+	rows, err := s.db.Query(qs)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	cages := []models.Cage{}
 	for rows.Next() {
@@ -123,11 +142,11 @@ func (s *ParkSqlDao) GetCages() ([]models.Cage, error) {
 func (s *ParkSqlDao) getDinosaurCountInCage(cageId int) (int, error) {
 	qs := `SELECT COUNT(*) FROM dinosaur where cageId=?`
 	rows, err := s.db.Query(qs, cageId)
-	defer rows.Close()
-
 	if err != nil {
 		return 0, err
 	}
+	defer rows.Close()
+
 	if !rows.Next() {
 		// This shouldn't happen, but if it does the the cage must have been deleted
 		return 0, models.EntityNotFound
@@ -142,11 +161,11 @@ func (s *ParkSqlDao) getDinosaurCountInCage(cageId int) (int, error) {
 func (s *ParkSqlDao) AddDinosaur(dinosaur models.Dinosaur) error {
 	speciesQuery := `SELECT COUNT(*) FROM species where name=?`
 	speciesRows, err := s.db.Query(speciesQuery, dinosaur.Species)
-	defer speciesRows.Close()
-
 	if err != nil {
 		return err
 	}
+	defer speciesRows.Close()
+
 	if !speciesRows.Next() {
 		// This shouldn't happen, so treat it like an internal server error
 		return fmt.Errorf("no data returned from the database when checking for species %s", dinosaur.Species)
@@ -181,18 +200,41 @@ func (s *ParkSqlDao) AddDinosaur(dinosaur models.Dinosaur) error {
 	return nil
 }
 
-func (s *ParkSqlDao) GetDinosaurs() ([]models.Dinosaur, error) {
+func (s *ParkSqlDao) GetDinosaurs(filter models.DinosaurFilter) ([]models.Dinosaur, error) {
 	qs := `SELECT d.name, d.species, s.diet, c.externalId
 		   FROM dinosaur d
 		   JOIN species s on s.name=d.species 
-		   LEFT OUTER JOIN cage c on c.id=d.cageId
-		   ORDER BY d.id`
-	rows, err := s.db.Query(qs)
-	defer rows.Close()
+		   LEFT OUTER JOIN cage c on c.id=d.cageId`
 
+	//Use the filter to build the where clause
+	whereParts := []string{}
+	args := []any{}
+	if filter.Diet != nil {
+		whereParts = append(whereParts, `s.diet=?`)
+		args = append(args, *filter.Diet)
+	}
+	if filter.NeedsCageAssignment != nil {
+		if *filter.NeedsCageAssignment {
+			whereParts = append(whereParts, "d.cageId IS NULL")
+		} else {
+			whereParts = append(whereParts, "d.cageId IS NOT NULL")
+		}
+	}
+	if filter.Species != nil {
+		whereParts = append(whereParts, "s.name=?")
+		args = append(args, *filter.Species)
+	}
+
+	if len(whereParts) > 0 {
+		qs += " WHERE " + strings.Join(whereParts, " AND ")
+	}
+
+	qs += " ORDER BY d.id "
+	rows, err := s.db.Query(qs, args...)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	dinosaurs := []models.Dinosaur{}
 	for rows.Next() {
@@ -213,11 +255,11 @@ func (s *ParkSqlDao) GetDinosaur(name string) (*models.Dinosaur, error) {
 		   LEFT OUTER JOIN cage c on c.id=d.cageId
 		   WHERE d.name=?`
 	rows, err := s.db.Query(qs, name)
-	defer rows.Close()
-
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
+
 	if !rows.Next() {
 		return nil, models.EntityNotFound
 	}
@@ -280,11 +322,11 @@ func (s *ParkSqlDao) cageHasOtherSpecies(dinosaur models.Dinosaur, cage models.C
 		   JOIN dinosaur d on d.cageId=c.id 
 		   WHERE c.externalId=? AND d.species<>?`
 	rows, err := s.db.Query(qs, cage.Label, dinosaur.Species)
-	defer rows.Close()
-
 	if err != nil {
 		return false, err
 	}
+	defer rows.Close()
+
 	if !rows.Next() {
 		return false, nil
 	}
@@ -304,11 +346,11 @@ func (s *ParkSqlDao) cageHasCarnivores(cage models.Cage) (bool, error) {
 		   JOIN species s on s.name=d.species
 		   WHERE c.externalId=? AND s.diet='Carnivore'`
 	rows, err := s.db.Query(qs, cage.Label)
-	defer rows.Close()
-
 	if err != nil {
 		return false, err
 	}
+	defer rows.Close()
+
 	if !rows.Next() {
 		return false, nil
 	}
@@ -333,6 +375,9 @@ func (s *ParkSqlDao) GetDinosaursInCage(cageLabel string) ([]models.Dinosaur, er
 		   WHERE d.cageId=?
 		   ORDER BY d.id`
 	rows, err := s.db.Query(qs, cageId)
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	dinosaurs := []models.Dinosaur{}
