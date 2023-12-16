@@ -51,3 +51,5 @@ The jurassic-park management system uses  REST API. It is focused on creating ca
 ## Future Improvements
 We need to use transactions when changing the power status of a cage or adding a dinosaur to it. There currently is the potential for race conditions until that is resolved. Filtering support for dinosaurs is fairly robust. However we can only filter on cages based on their power status. We should add the ability to filter on cages that can house a dinosaur, so park managers can more quickly find the right cage for a dinosaur. Cages are mostly immutable. You can change their power status as long as all of the criteria is met, but you can't change their capacity or their label.
 
+I also track power by setting the HasPower boolean field to true or false. I should've used the values: ACTIVE and DOWN.
+
