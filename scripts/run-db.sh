@@ -4,6 +4,7 @@ cd "$(dirname "$0")"
 
 echo "Starting mysql docker container...">&2
 docker run \
+  --platform linux/x86_64 \
   -d \
   --rm \
   --name jurassic-park-sql \
