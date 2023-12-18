@@ -3,6 +3,7 @@ Welcome to the Jurassic Park cage management system! This service manages the in
 
 ## Prerequisites
 You will need go 1.21.1 or later installed on your developer machine.
+You will need Docker installed on your machine
 
 ## Setup
 Pull the code from github by running the following command in your go path.
